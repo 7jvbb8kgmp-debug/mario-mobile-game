@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Mini Mario-like (Mobile)</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(#7ad6ff, #dff7ff);
+    }
+
+    #game-wrap {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      max-width: 100vw;
+      max-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: linear-gradient(#7ad6ff, #dff7ff);
+      border: none;
+      touch-action: none;
+    }
+
+    #touch-controls {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 170px;
+      pointer-events: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 0 18px 18px 18px;
+    }
+
+    .control-group {
+      display: flex;
+      gap: 14px;
+      pointer-events: auto;
+    }
+
+    .control-btn {
+      width: 78px;
+      height: 78px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.7);
+      background: rgba(0,0,0,0.25);
+      color: white;
+      font-size: 30px;
+      font-weight: bold;
+      display: grid;
+      place-items: center;
+      user-select: none;
+      touch-action: manipulation;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+    }
+
+    .control-btn:active,
+    .control-btn.active {
+      transform: scale(0.96);
+      background: rgba(255,255,255,0.25);
+    }
+
+    #jump-btn {
+      width: 90px;
+      height: 90px;
+      margin-left: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-wrap">
+    <canvas id="game" width="960" height="540"></canvas>
+
+    <div id="touch-controls">
+      <div class="control-group">
+        <button class="control-btn" data-control="left" aria-label="Move left">◀</button>
+        <button class="control-btn" data-control="right" aria-label="Move right">▶</button>
+      </div>
+
+      <div class="control-group">
+        <button id="jump-btn" class="control-btn" data-control="jump" aria-label="Jump">▲</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const touchState = {
+      left: false,
+      right: false,
+      jump: false
+    };
+
+    const keys = {};
+    const world = {
+      width: 2600,
+      height: 540
+    };
+
+    let cameraX = 0;
+    let gameWon = false;
+    let message = "";
+
+    const level = [
+      { x: 0, y: 500, w: 460, h: 40 },
+      { x: 470, y: 470, w: 200, h: 70 },
+      { x: 720, y: 440, w: 180, h: 100 },
+      { x: 960, y: 500, w: 250, h: 40 },
+      { x: 1250, y: 430, w: 180, h: 110 },
+      { x: 1460, y: 500, w: 360, h: 40 },
+      { x: 1840, y: 470, w: 200, h: 70 },
+      { x: 2060, y: 500, w: 540, h: 40 }
+    ];
+
+    const goal = { x: 2460, y: 350, w: 30, h: 150 };
+
+    const player = {
+      x: 90,
+      y: 370,
+      w: 30,
+      h: 42,
+      vx: 0,
+      vy: 0,
+      speed: 4.3,
+      jumpPower: 13.5,
+      onGround: false,
+      facing: 1,
+      coins: 0,
+      lives: 3
+    };
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    const coins = [
+      { x: 260, y: 450, r: 9, collected: false },
+      { x: 540, y: 410, r: 9, collected: false },
+      { x: 780, y: 380, r: 9, collected: false },
+      { x: 1020, y: 440, r: 9, collected: false },
+      { x: 1310, y: 360, r: 9, collected: false },
+      { x: 1520, y: 440, r: 9, collected: false },
+      { x: 1635, y: 440, r: 9, collected: false },
+      { x: 1880, y: 420, r: 9, collected: false },
+      { x: 2140, y: 440, r: 9, collected: false }
+    ];
+
+    const enemies = [
+      { x: 610, y: 445, w: 32, h: 28, minX: 500, maxX: 650, dir: 1, speed: 1.2, alive: true },
+      { x: 910, y: 470, w: 32, h: 28, minX: 820, maxX: 1160, dir: 1, speed: 1.7, alive: true },
+      { x: 1660, y: 470, w: 32, h: 28, minX: 1480, maxX: 1800, dir: 1, speed: 1.4, alive: true }
+    ];
+
+    function resetGame() {
+      player.x = 90;
+      player.y = 370;
+      player.vx = 0;
+      player.vy = 0;
+      player.onGround = false;
+      player.facing = 1;
+      player.coins = 0;
+      player.lives = 3;
+      coins.forEach(c => c.collected = false);
+      gameWon = false;
+      message = "";
+      cameraX = 0;
+
+      enemies.forEach((enemy, index) => {
+        if (index === 0) {
+          enemy.x = 610; enemy.y = 445; enemy.minX = 500; enemy.maxX = 650; enemy.dir = 1; enemy.speed = 1.2; enemy.alive = true;
+        } else if (index === 1) {
+          enemy.x = 910; enemy.y = 470; enemy.minX = 820; enemy.maxX = 1160; enemy.dir = 1; enemy.speed = 1.7; enemy.alive = true;
+        } else {
+          enemy.x = 1660; enemy.y = 470; enemy.minX = 1480; enemy.maxX = 1800; enemy.dir = 1; enemy.speed = 1.4; enemy.alive = true;
+        }
+      });
+    }
+
+    function rectsIntersect(a, b) {
+      return (
+        a.x < b.x + b.w &&
+        a.x + a.w > b.x &&
+        a.y < b.y + b.h &&
+        a.y + a.h > b.y
+      );
+    }
+
+    function setupTouchButtons() {
+      const buttons = document.querySelectorAll(".control-btn");
+
+      buttons.forEach(btn => {
+        const control = btn.dataset.control;
+
+        const activate = (event) => {
+          event.preventDefault();
+          touchState[control] = true;
+          btn.classList.add("active");
+        };
+
+        const deactivate = (event) => {
+          event.preventDefault();
+          touchState[control] = false;
+          btn.classList.remove("active");
+        };
+
+        btn.addEventListener("pointerdown", activate);
+        btn.addEventListener("pointerup", deactivate);
+        btn.addEventListener("pointerleave", deactivate);
+        btn.addEventListener("pointercancel", deactivate);
+      });
+    }
+
+    function handleInput() {
+      const moveLeft = keys["ArrowLeft"] || keys["a"] || keys["A"] || touchState.left;
+      const moveRight = keys["ArrowRight"] || keys["d"] || keys["D"] || touchState.right;
+      const jump = keys["ArrowUp"] || keys["w"] || keys["W"] || keys[" "] || touchState.jump;
+
+      player.vx = 0;
+
+      if (moveLeft) {
+        player.vx = -player.speed;
+        player.facing = -1;
+      }
+      if (moveRight) {
+        player.vx = player.speed;
+        player.facing = 1;
+      }
+
+      if (jump && player.onGround) {
+        player.vy = -player.jumpPower;
+        player.onGround = false;
+      }
+    }
+
+    function resolveLevelCollisions() {
+      player.onGround = false;
+
+      for (const block of level) {
+        const prevX = player.x - player.vx;
+        const prevY = player.y - player.vy;
+
+        if (rectsIntersect(player, block)) {
+          const prevBottom = prevY + player.h;
+          const prevTop = prevY;
+          const prevRight = prevX + player.w;
+          const prevLeft = prevX;
+
+          const playerBottom = player.y + player.h;
+          const playerTop = player.y;
+          const playerRight = player.x + player.w;
+          const playerLeft = player.x;
+
+          const wasAbove = prevBottom <= block.y + 8 && player.vy >= 0;
+          const wasBelow = prevTop >= block.y + block.h - 8 && player.vy < 0;
+
+          if (wasAbove && playerBottom >= block.y && playerTop < block.y + block.h) {
+            player.y = block.y - player.h;
+            player.vy = 0;
+            player.onGround = true;
+          } else if (wasBelow && playerTop <= block.y + block.h) {
+            player.y = block.y + block.h;
+            player.vy = 0;
+          } else if (prevRight <= block.x + 8 && player.vx > 0) {
+            player.x = block.x - player.w;
+            player.vx = 0;
+          } else if (prevLeft >= block.x + block.w - 8 && player.vx < 0) {
+            player.x = block.x + block.w;
+            player.vx = 0;
+          }
+        }
+      }
+
+      if (player.y + player.h > canvas.height + 100) {
+        player.lives -= 1;
+        if (player.lives <= 0) {
+          message = "Game Over! Tap R";
+          player.lives = 0;
+        } else {
+          player.x = 90;
+          player.y = 370;
+          player.vx = 0;
+          player.vy = 0;
+        }
+      }
+    }
+
+    function updateCoins() {
+      for (const coin of coins) {
+        if (!coin.collected) {
+          const cx = coin.x;
+          const cy = coin.y;
+          const px = player.x + player.w / 2;
+          const py = player.y + player.h / 2;
+
+          if (Math.abs(px - cx) < 25 && Math.abs(py - cy) < 25) {
+            coin.collected = true;
+            player.coins += 1;
+          }
+        }
+      }
+    }
+
+    function updateEnemies() {
+      for (const enemy of enemies) {
+        if (!enemy.alive) continue;
+
+        enemy.x += enemy.speed * enemy.dir;
+        if (enemy.x <= enemy.minX || enemy.x + enemy.w >= enemy.maxX) {
+          enemy.dir *= -1;
+        }
+
+        const enemyRect = { x: enemy.x, y: enemy.y, w: enemy.w, h: enemy.h };
+        const playerRect = { x: player.x, y: player.y, w: player.w, h: player.h };
+
+        if (rectsIntersect(playerRect, enemyRect)) {
+          const stomp = player.vy > 0 && player.y + player.h - enemy.y < 18;
+
+          if (stomp) {
+            enemy.alive = false;
+            player.vy = -8;
+          } else {
+            player.lives -= 1;
+            if (player.lives <= 0) {
+              message = "Game Over! Tap R";
+              player.lives = 0;
+            } else {
+              player.x = 90;
+              player.y = 370;
+              player.vx = 0;
+              player.vy = 0;
+            }
+          }
+        }
+      }
+    }
+
+    function updateGoal() {
+      const playerRect = { x: player.x, y: player.y, w: player.w, h: player.h };
+      if (rectsIntersect(playerRect, goal)) {
+        gameWon = true;
+        message = "You Win! Tap R";
+      }
+    }
+
+    function updateCamera() {
+      cameraX = clamp(player.x - canvas.width * 0.35, 0, world.width - canvas.width);
+    }
+
+    function update() {
+      if (gameWon || message === "Game Over! Tap R" || message === "You Win! Tap R") {
+        return;
+      }
+
+      handleInput();
+
+      player.vy += 0.65;
+      player.x += player.vx;
+      player.y += player.vy;
+
+      resolveLevelCollisions();
+      updateCoins();
+      updateEnemies();
+      updateGoal();
+      updateCamera();
+    }
+
+    function drawBackground() {
+      ctx.fillStyle = "#7ad6ff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      for (let i = 0; i < 8; i++) {
+        const x = (i * 170) - cameraX * 0.25;
+        const y = 80 + (i % 3) * 25;
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        ctx.beginPath();
+        ctx.arc(x + 20, y, 18, 0, Math.PI * 2);
+        ctx.arc(x + 42, y, 22, 0, Math.PI * 2);
+        ctx.arc(x + 60, y + 8, 18, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = "#8acb6d";
+      ctx.fillRect(0, 470, canvas.width, 70);
+
+      for (let i = 0; i < 30; i++) {
+        const hillX = (i * 120) - (cameraX * 0.4);
+        ctx.fillStyle = "#77b76a";
+        ctx.beginPath();
+        ctx.moveTo(hillX, 540);
+        ctx.quadraticCurveTo(hillX + 80, 300, hillX + 160, 540);
+        ctx.fill();
+      }
+    }
+
+    function drawBlocks() {
+      for (const block of level) {
+        const screenX = block.x - cameraX;
+
+        ctx.fillStyle = "#7f5a3a";
+        ctx.fillRect(screenX, block.y, block.w, block.h);
+
+        ctx.fillStyle = "#4caf50";
+        ctx.fillRect(screenX, block.y, block.w, 12);
+
+        ctx.fillStyle = "#8d6e4f";
+        for (let i = 0; i < block.w; i += 24) {
+          ctx.fillRect(screenX + i, block.y + 12, 2, block.h - 12);
+        }
+      }
+    }
+
+    function drawCoins() {
+      for (const coin of coins) {
+        if (coin.collected) continue;
+        const x = coin.x - cameraX;
+        ctx.fillStyle = "#ffd93b";
+        ctx.beginPath();
+        ctx.arc(x, coin.y, coin.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#f0b800";
+        ctx.beginPath();
+        ctx.arc(x - 2, coin.y - 2, coin.r * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawEnemies() {
+      for (const enemy of enemies) {
+        if (!enemy.alive) continue;
+        const x = enemy.x - cameraX;
+        ctx.fillStyle = "#6d3d1f";
+        ctx.fillRect(x, enemy.y, enemy.w, enemy.h);
+
+        ctx.fillStyle = "#f5f5f5";
+        ctx.fillRect(x + 6, enemy.y + 6, 6, 6);
+        ctx.fillRect(x + 18, enemy.y + 6, 6, 6);
+        ctx.fillStyle = "#000";
+        ctx.fillRect(x + 8, enemy.y + 8, 2, 2);
+        ctx.fillRect(x + 20, enemy.y + 8, 2, 2);
+      }
+    }
+
+    function drawGoal() {
+      const x = goal.x - cameraX;
+      ctx.fillStyle = "#cfcfcf";
+      ctx.fillRect(x, goal.y, 6, goal.h);
+
+      ctx.fillStyle = "#ff3d3d";
+      ctx.beginPath();
+      ctx.moveTo(x + 6, goal.y + 10);
+      ctx.lineTo(x + 56, goal.y + 26);
+      ctx.lineTo(x + 6, goal.y + 42);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawPlayer() {
+      const x = player.x - cameraX;
+      const y = player.y;
+
+      ctx.fillStyle = "#f8d7a8";
+      ctx.fillRect(x + 8, y, 14, 18);
+
+      ctx.fillStyle = "#e53935";
+      ctx.fillRect(x + 6, y - 10, 18, 10);
+
+      ctx.fillStyle = "#1d4fd0";
+      ctx.fillRect(x + 6, y + 18, 18, 16);
+
+      ctx.fillStyle = "#1d4fd0";
+      ctx.fillRect(x + 2, y + 22, 8, 14);
+      ctx.fillRect(x + 20, y + 22, 8, 14);
+
+      ctx.fillStyle = "#000";
+      ctx.fillRect(x + 10, y + 30, 4, 12);
+      ctx.fillRect(x + 18, y + 30, 4, 12);
+
+      ctx.fillStyle = "#f8d7a8";
+      ctx.fillRect(x + 7, y + 5, 4, 5);
+      ctx.fillRect(x + 19, y + 5, 4, 5);
+
+      if (player.facing === -1) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(x + 2, y + 22, 2, 4);
+      } else {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(x + 25, y + 22, 2, 4);
+      }
+    }
+
+    function drawHUD() {
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.fillRect(20, 18, 240, 70);
+
+      ctx.fillStyle = "#fff";
+      ctx.font = "24px Arial";
+      ctx.fillText("Coins: " + player.coins, 35, 48);
+
+      ctx.fillStyle = "#fff";
+      ctx.fillText("Lives: " + player.lives, 35, 76);
+
+      if (message) {
+        ctx.fillStyle = "rgba(0,0,0,0.4)";
+        ctx.fillRect(220, 160, 520, 80);
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 36px Arial";
+        ctx.fillText(message, 260, 215);
+      }
+    }
+
+    function draw() {
+      drawBackground();
+      drawBlocks();
+      drawGoal();
+      drawCoins();
+      drawEnemies();
+      drawPlayer();
+      drawHUD();
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    document.addEventListener("keydown", (e) => {
+      keys[e.key] = true;
+
+      if (e.key === "r" || e.key === "R") {
+        resetGame();
+      }
+    });
+
+    document.addEventListener("keyup", (e) => {
+      keys[e.key] = false;
+    });
+
+    setupTouchButtons();
+
+    resetGame();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
