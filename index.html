@@ -128,6 +128,7 @@
     let cameraX = 0;
     let gameWon = false;
     let message = "";
+    let animationTime = 0;
 
     const level = [
       { x: 0, y: 500, w: 460, h: 40 },
@@ -390,15 +391,23 @@
       updateEnemies();
       updateGoal();
       updateCamera();
+      animationTime += 1;
     }
 
     function drawBackground() {
       ctx.fillStyle = "#7ad6ff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+      const sunX = 820 - cameraX * 0.12;
+      const sunY = 90 + Math.sin(animationTime * 0.04) * 8;
+      ctx.fillStyle = "rgba(255, 220, 130, 0.8)";
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, 42, 0, Math.PI * 2);
+      ctx.fill();
+
       for (let i = 0; i < 8; i++) {
-        const x = (i * 170) - cameraX * 0.25;
-        const y = 80 + (i % 3) * 25;
+        const x = ((i * 170) - ((cameraX * 0.25 + animationTime * 0.8) % 1500)) % (canvas.width + 220);
+        const y = 80 + (i % 3) * 25 + Math.sin(animationTime * 0.05 + i) * 5;
         ctx.fillStyle = "rgba(255,255,255,0.8)";
         ctx.beginPath();
         ctx.arc(x + 20, y, 18, 0, Math.PI * 2);
@@ -441,14 +450,34 @@
       for (const coin of coins) {
         if (coin.collected) continue;
         const x = coin.x - cameraX;
+        const bob = Math.sin(animationTime * 0.18 + coin.x * 0.05) * 4;
+        const coinY = coin.y + bob;
+        const spin = (animationTime * 0.22 + coin.x) % (Math.PI * 2);
+
         ctx.fillStyle = "#ffd93b";
         ctx.beginPath();
-        ctx.arc(x, coin.y, coin.r, 0, Math.PI * 2);
+        ctx.arc(x, coinY, coin.r, 0, Math.PI * 2);
         ctx.fill();
+
         ctx.fillStyle = "#f0b800";
         ctx.beginPath();
-        ctx.arc(x - 2, coin.y - 2, coin.r * 0.6, 0, Math.PI * 2);
+        ctx.arc(x - 2, coinY - 2, coin.r * 0.6, 0, Math.PI * 2);
         ctx.fill();
+
+        ctx.fillStyle = "rgba(255,255,255,0.75)";
+        ctx.beginPath();
+        ctx.moveTo(x - 2, coinY - coin.r * 0.6);
+        ctx.lineTo(x + 2, coinY - coin.r * 0.6);
+        ctx.lineTo(x + 2.5, coinY + coin.r * 0.6);
+        ctx.lineTo(x - 2.5, coinY + coin.r * 0.6);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, coinY, coin.r * 0.7, -Math.PI / 2 + spin * 0.2, Math.PI / 2 + spin * 0.2);
+        ctx.stroke();
       }
     }
 
@@ -456,6 +485,7 @@
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
         const x = enemy.x - cameraX;
+        const blink = Math.sin(animationTime * 0.18 + enemy.x) > 0 ? 1 : 0;
         ctx.fillStyle = "#6d3d1f";
         ctx.fillRect(x, enemy.y, enemy.w, enemy.h);
 
@@ -463,20 +493,21 @@
         ctx.fillRect(x + 6, enemy.y + 6, 6, 6);
         ctx.fillRect(x + 18, enemy.y + 6, 6, 6);
         ctx.fillStyle = "#000";
-        ctx.fillRect(x + 8, enemy.y + 8, 2, 2);
-        ctx.fillRect(x + 20, enemy.y + 8, 2, 2);
+        ctx.fillRect(x + 8 + blink * 1, enemy.y + 8, 2, 2);
+        ctx.fillRect(x + 20 + blink * 1, enemy.y + 8, 2, 2);
       }
     }
 
     function drawGoal() {
       const x = goal.x - cameraX;
+      const pulse = 1 + Math.sin(animationTime * 0.12) * 0.12;
       ctx.fillStyle = "#cfcfcf";
       ctx.fillRect(x, goal.y, 6, goal.h);
 
       ctx.fillStyle = "#ff3d3d";
       ctx.beginPath();
       ctx.moveTo(x + 6, goal.y + 10);
-      ctx.lineTo(x + 56, goal.y + 26);
+      ctx.lineTo(x + 56 * pulse, goal.y + 26);
       ctx.lineTo(x + 6, goal.y + 42);
       ctx.closePath();
       ctx.fill();
@@ -485,34 +516,45 @@
     function drawPlayer() {
       const x = player.x - cameraX;
       const y = player.y;
+      const walkCycle = player.onGround ? Math.sin(animationTime * 0.22 + player.x * 0.08) : 0;
+      const bob = player.onGround ? Math.abs(Math.sin(animationTime * 0.18)) * 2 : 0;
 
       ctx.fillStyle = "#f8d7a8";
-      ctx.fillRect(x + 8, y, 14, 18);
+      ctx.fillRect(x + 8, y + bob, 14, 18);
 
       ctx.fillStyle = "#e53935";
-      ctx.fillRect(x + 6, y - 10, 18, 10);
+      ctx.fillRect(x + 6, y - 10 + bob, 18, 10);
 
       ctx.fillStyle = "#1d4fd0";
-      ctx.fillRect(x + 6, y + 18, 18, 16);
+      ctx.fillRect(x + 6, y + 18 + bob, 18, 16);
 
       ctx.fillStyle = "#1d4fd0";
-      ctx.fillRect(x + 2, y + 22, 8, 14);
-      ctx.fillRect(x + 20, y + 22, 8, 14);
+      const legSwing = walkCycle * 4;
+      ctx.fillRect(x + 2, y + 22 + bob + legSwing, 8, 14);
+      ctx.fillRect(x + 20, y + 22 + bob - legSwing, 8, 14);
 
       ctx.fillStyle = "#000";
-      ctx.fillRect(x + 10, y + 30, 4, 12);
-      ctx.fillRect(x + 18, y + 30, 4, 12);
+      ctx.fillRect(x + 10, y + 30 + bob, 4, 12);
+      ctx.fillRect(x + 18, y + 30 + bob, 4, 12);
 
       ctx.fillStyle = "#f8d7a8";
-      ctx.fillRect(x + 7, y + 5, 4, 5);
-      ctx.fillRect(x + 19, y + 5, 4, 5);
+      ctx.fillRect(x + 7, y + 5 + bob, 4, 5);
+      ctx.fillRect(x + 19, y + 5 + bob, 4, 5);
 
       if (player.facing === -1) {
         ctx.fillStyle = "#000";
-        ctx.fillRect(x + 2, y + 22, 2, 4);
+        ctx.fillRect(x + 2, y + 22 + bob, 2, 4);
       } else {
         ctx.fillStyle = "#000";
-        ctx.fillRect(x + 25, y + 22, 2, 4);
+        ctx.fillRect(x + 25, y + 22 + bob, 2, 4);
+      }
+
+      if (player.onGround && Math.abs(player.vx) > 0.1) {
+        ctx.fillStyle = "rgba(255,255,255,0.6)";
+        ctx.beginPath();
+        ctx.arc(x + 2, y + 38 + bob, 3, 0, Math.PI * 2);
+        ctx.arc(x + 28, y + 38 + bob, 3, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
